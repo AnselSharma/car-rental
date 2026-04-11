@@ -1,64 +1,87 @@
 <?php
 session_start();
 include('db.php');
+if(!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
+$uid = $_SESSION['user_id'];
 
-if(!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
+// Handle cancellation
+if(isset($_GET['cancel'])) {
+    $bid = mysqli_real_escape_string($conn, $_GET['cancel']);
+    mysqli_query($conn, "UPDATE bookings SET status='cancelled' WHERE id='$bid' AND user_id='$uid'");
+    header("Location: my_bookings.php?msg=cancelled");
     exit();
 }
-$uid = $_SESSION['user_id'];
+
+$result = mysqli_query($conn, "SELECT bookings.*, cars.brand, cars.model FROM bookings JOIN cars ON bookings.car_id = cars.id WHERE bookings.user_id='$uid' ORDER BY bookings.created_at DESC");
 ?>
 <!DOCTYPE html>
 <html>
 <head>
-    <title>My Bookings - CarRental Pro</title>
+    <title>My Bookings</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f4f4; padding: 40px 20px; }
-        h1 { color: #2c3e50; margin-bottom: 5px; }
-        .back { color: #e67e22; text-decoration: none; font-size: 0.95em; }
-        hr { margin: 15px 0 25px 0; border: none; border-top: 1px solid #ddd; }
-        .success-msg { background: #eafaf1; border: 1px solid #27ae60; color: #27ae60; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
-        .receipt { background: white; padding: 20px 25px; border-radius: 10px; margin-bottom: 15px; border-left: 5px solid #27ae60; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        .receipt h3 { color: #2c3e50; margin-bottom: 10px; }
-        .receipt p { color: #555; margin: 5px 0; font-size: 0.95em; }
-        .status { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 0.85em; font-weight: bold; background: #eafaf1; color: #27ae60; }
-        .date { color: #95a5a6; font-size: 0.82em; margin-top: 8px; }
-        .empty { text-align: center; color: #888; margin-top: 50px; font-size: 1.1em; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f6f8; }
+        nav { background: #2c3e50; padding: 15px 40px; display: flex; justify-content: space-between; align-items: center; }
+        nav .brand { color: white; font-size: 1.3em; font-weight: bold; text-decoration: none; }
+        nav a { color: white; text-decoration: none; margin-left: 15px; font-size: 0.95em; }
+        nav a:hover { color: #f39c12; }
+        .container { max-width: 800px; margin: 40px auto; padding: 0 20px; }
+        h1 { color: #2c3e50; margin-bottom: 20px; }
+        .msg { padding: 12px 18px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
+        .msg.success { background: #eafaf1; color: #27ae60; border: 1px solid #27ae60; }
+        .msg.cancelled { background: #fdf2f2; color: #e74c3c; border: 1px solid #e74c3c; }
+        .card { background: white; border-radius: 10px; padding: 20px 25px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 5px solid #27ae60; }
+        .card.cancelled-card { border-left-color: #e74c3c; opacity: 0.8; }
+        .card h3 { color: #2c3e50; margin-bottom: 8px; }
+        .card p { color: #555; font-size: 0.92em; margin: 4px 0; }
+        .badge { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 0.8em; font-weight: bold; margin-top: 8px; }
+        .badge.confirmed { background: #eafaf1; color: #27ae60; }
+        .badge.cancelled { background: #fdf2f2; color: #e74c3c; }
+        .badge.pending { background: #fef9e7; color: #f39c12; }
+        .cancel-btn { float: right; background: #e74c3c; color: white; border: none; padding: 7px 15px; border-radius: 6px; cursor: pointer; font-size: 0.85em; text-decoration: none; }
+        .cancel-btn:hover { background: #c0392b; }
+        .empty { text-align: center; padding: 60px; color: #888; }
         .empty a { color: #e67e22; text-decoration: none; }
     </style>
 </head>
 <body>
-    <h1>📋 Your Rental History</h1>
-    <a href="index.php" class="back">← Back to Cars</a>
-    <hr>
+<nav>
+    <a href="index.php" class="brand">🚗 CarRental Pro</a>
+    <div>
+        <a href="index.php">Home</a>
+        <a href="logout.php" style="color:#ff7675;">Logout</a>
+    </div>
+</nav>
+
+<div class="container">
+    <h1>📋 My Bookings</h1>
 
     <?php if(isset($_GET['success'])): ?>
-        <div class="success-msg">✅ Booking confirmed successfully! Your car is reserved.</div>
+        <div class="msg success">✅ Booking confirmed successfully!</div>
+    <?php elseif(isset($_GET['msg']) && $_GET['msg'] == 'cancelled'): ?>
+        <div class="msg cancelled">❌ Booking cancelled.</div>
     <?php endif; ?>
 
-    <?php
-    $sql = "SELECT bookings.*, cars.brand, cars.model, cars.category
-            FROM bookings
-            JOIN cars ON bookings.car_id = cars.id
-            WHERE bookings.user_id = '$uid'
-            ORDER BY bookings.created_at DESC";
-
-    $result = mysqli_query($conn, $sql);
-
-    if(mysqli_num_rows($result) > 0) {
-        while($row = mysqli_fetch_assoc($result)) {
-            echo "<div class='receipt'>";
-            echo "<h3>" . htmlspecialchars($row['brand']) . " " . htmlspecialchars($row['model']) . " <small style='color:#7f8c8d;font-weight:normal;'>(" . $row['category'] . ")</small></h3>";
-            echo "<p>📅 Pickup: <strong>" . $row['pickup_date'] . "</strong> &nbsp;→&nbsp; Return: <strong>" . $row['return_date'] . "</strong></p>";
-            echo "<p>🕐 Duration: <strong>" . $row['total_days'] . " day(s)</strong> &nbsp;|&nbsp; 💰 Total Paid: <strong>₹" . number_format($row['total_price'], 2) . "</strong></p>";
-            echo "<p><span class='status'>" . ucfirst($row['status']) . "</span></p>";
-            echo "<p class='date'>Booked on: " . $row['created_at'] . "</p>";
-            echo "</div>";
-        }
-    } else {
-        echo "<div class='empty'><p>You haven't made any bookings yet.</p><br><a href='index.php'>Browse available cars →</a></div>";
-    }
+    <?php if(mysqli_num_rows($result) > 0):
+        while($row = mysqli_fetch_assoc($result)):
+        $isCancelled = $row['status'] == 'cancelled';
     ?>
+    <div class="card <?php echo $isCancelled ? 'cancelled-card' : ''; ?>">
+        <?php if(!$isCancelled): ?>
+            <a href="my_bookings.php?cancel=<?php echo $row['id']; ?>" class="cancel-btn" onclick="return confirm('Cancel this booking?')">Cancel</a>
+        <?php endif; ?>
+        <h3><?php echo $row['brand']." ".$row['model']; ?></h3>
+        <p>📅 <?php echo $row['pickup_date']; ?> → <?php echo $row['return_date']; ?> (<?php echo $row['total_days']; ?> days)</p>
+        <p>💰 Total: <strong>₹<?php echo number_format($row['total_price'], 2); ?></strong></p>
+        <span class="badge <?php echo $row['status']; ?>"><?php echo ucfirst($row['status']); ?></span>
+        <p style="color:#aaa; font-size:0.8em; margin-top:8px;">Booked on: <?php echo $row['created_at']; ?></p>
+    </div>
+    <?php endwhile; else: ?>
+        <div class="empty">
+            <p>No bookings yet.</p><br>
+            <a href="index.php">Browse cars →</a>
+        </div>
+    <?php endif; ?>
+</div>
 </body>
 </html>
